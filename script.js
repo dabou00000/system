@@ -3229,7 +3229,27 @@ function initiateSaleReturn(saleId) {
     document.getElementById('returnInvoiceNumber').textContent = currentSaleForReturn.invoiceNumber;
     document.getElementById('returnCustomerName').textContent = currentSaleForReturn.customer;
     document.getElementById('returnTotalAmount').textContent = formatCurrency(currentSaleForReturn.amount);
-    document.getElementById('returnPaymentMethod').textContent = currentSaleForReturn.paymentMethod;
+    
+    // عرض طريقة الدفع مع التفاصيل
+    let paymentMethodText = currentSaleForReturn.paymentMethod;
+    if (currentSaleForReturn.cashDetails) {
+        const currency = currentSaleForReturn.cashDetails.paymentCurrency;
+        const paid = currentSaleForReturn.cashDetails.amountPaid;
+        if (currency === 'USD') {
+            paymentMethodText += ` ($${paid.toFixed(2)})`;
+        } else {
+            paymentMethodText += ` (${paid.toLocaleString()} ل.ل)`;
+        }
+    } else if (currentSaleForReturn.partialDetails) {
+        const currency = currentSaleForReturn.partialDetails.paymentCurrency;
+        const paid = currentSaleForReturn.partialDetails.amountPaid;
+        if (currency === 'USD') {
+            paymentMethodText += ` - مدفوع: $${paid.toFixed(2)}`;
+        } else {
+            paymentMethodText += ` - مدفوع: ${paid.toLocaleString()} ل.ل`;
+        }
+    }
+    document.getElementById('returnPaymentMethod').textContent = paymentMethodText;
     
     // إعادة تعيين النموذج
     document.getElementById('returnType').value = 'full';
@@ -3251,15 +3271,74 @@ function updateReturnSummary() {
     const returnType = document.getElementById('returnType').value;
     const partialAmount = parseFloat(document.getElementById('partialReturnAmount').value) || 0;
     
-    let refundAmount = 0;
-    if (returnType === 'full') {
-        refundAmount = currentSaleForReturn.amount;
-    } else if (returnType === 'partial') {
-        refundAmount = Math.min(partialAmount, currentSaleForReturn.amount);
+    let refundDisplayText = '';
+    let refundMethodText = '';
+    
+    if (currentSaleForReturn.cashDetails) {
+        // مبيعة نقدية
+        const originalCurrency = currentSaleForReturn.cashDetails.paymentCurrency;
+        const originalPaid = currentSaleForReturn.cashDetails.amountPaid;
+        
+        if (returnType === 'full') {
+            if (originalCurrency === 'USD') {
+                refundDisplayText = `$${originalPaid.toFixed(2)}`;
+            } else {
+                refundDisplayText = `${originalPaid.toLocaleString()} ل.ل`;
+            }
+        } else if (returnType === 'partial') {
+            const refundRatio = partialAmount / currentSaleForReturn.amount;
+            const refundInOriginalCurrency = originalPaid * refundRatio;
+            
+            if (originalCurrency === 'USD') {
+                refundDisplayText = `$${refundInOriginalCurrency.toFixed(2)}`;
+            } else {
+                refundDisplayText = `${refundInOriginalCurrency.toLocaleString()} ل.ل`;
+            }
+        }
+        refundMethodText = 'نقدي';
+        
+    } else if (currentSaleForReturn.partialDetails) {
+        // مبيعة جزئية
+        const originalCurrency = currentSaleForReturn.partialDetails.paymentCurrency;
+        const originalPaid = currentSaleForReturn.partialDetails.amountPaid;
+        
+        if (returnType === 'full') {
+            if (originalCurrency === 'USD') {
+                refundDisplayText = `$${originalPaid.toFixed(2)}`;
+            } else {
+                refundDisplayText = `${originalPaid.toLocaleString()} ل.ل`;
+            }
+        } else if (returnType === 'partial') {
+            const refundRatio = partialAmount / currentSaleForReturn.amount;
+            const refundInOriginalCurrency = Math.min(originalPaid * refundRatio, originalPaid);
+            
+            if (originalCurrency === 'USD') {
+                refundDisplayText = `$${refundInOriginalCurrency.toFixed(2)}`;
+            } else {
+                refundDisplayText = `${refundInOriginalCurrency.toLocaleString()} ل.ل`;
+            }
+        }
+        refundMethodText = 'نقدي (من المبلغ المدفوع)';
+        
+    } else {
+        // مبيعة قديمة - افتراض
+        let refundAmount = 0;
+        if (returnType === 'full') {
+            refundAmount = currentSaleForReturn.amount;
+        } else if (returnType === 'partial') {
+            refundAmount = Math.min(partialAmount, currentSaleForReturn.amount);
+        }
+        
+        if (currentSaleForReturn.amount < 50) {
+            refundDisplayText = `$${refundAmount.toFixed(2)}`;
+        } else {
+            refundDisplayText = `${(refundAmount * settings.exchangeRate).toLocaleString()} ل.ل`;
+        }
+        refundMethodText = 'نقدي';
     }
     
-    document.getElementById('refundAmount').textContent = formatCurrency(refundAmount);
-    document.getElementById('refundMethod').textContent = currentSaleForReturn.paymentMethod === 'نقدي' ? 'نقدي' : 'رد إلى البطاقة';
+    document.getElementById('refundAmount').textContent = refundDisplayText;
+    document.getElementById('refundMethod').textContent = refundMethodText;
 }
 
 function processReturn() {
@@ -3303,12 +3382,73 @@ function processReturn() {
     }
     
     // تحديث الصندوق - إرجاع المال
-    if (currentSaleForReturn.paymentMethod === 'نقدي') {
-        // تحديد العملة بناءً على المبلغ
-        if (refundAmount < 10) { // افتراض أن المبالغ الصغيرة بالدولار
-            cashDrawer.cashUSD -= refundAmount;
+    if (currentSaleForReturn.paymentMethod === 'نقدي' || currentSaleForReturn.paymentMethod === 'جزئي') {
+        let refundDetails = [];
+        
+        if (currentSaleForReturn.cashDetails) {
+            // مبيعة نقدية
+            const originalCurrency = currentSaleForReturn.cashDetails.paymentCurrency;
+            const originalPaid = currentSaleForReturn.cashDetails.amountPaid;
+            
+            if (returnType === 'full') {
+                // استرجاع كامل - نرجع نفس المبلغ والعملة المدفوعة
+                if (originalCurrency === 'USD') {
+                    cashDrawer.cashUSD -= originalPaid;
+                    refundDetails.push(`$${originalPaid.toFixed(2)}`);
+                } else {
+                    cashDrawer.cashLBP -= originalPaid;
+                    refundDetails.push(`${originalPaid.toLocaleString()} ل.ل`);
+                }
+            } else {
+                // استرجاع جزئي - نحسب النسبة
+                const refundRatio = partialAmount / currentSaleForReturn.amount;
+                const refundInOriginalCurrency = originalPaid * refundRatio;
+                
+                if (originalCurrency === 'USD') {
+                    cashDrawer.cashUSD -= refundInOriginalCurrency;
+                    refundDetails.push(`$${refundInOriginalCurrency.toFixed(2)}`);
+                } else {
+                    cashDrawer.cashLBP -= refundInOriginalCurrency;
+                    refundDetails.push(`${refundInOriginalCurrency.toLocaleString()} ل.ل`);
+                }
+            }
+        } else if (currentSaleForReturn.partialDetails) {
+            // مبيعة جزئية - نرجع فقط المبلغ المدفوع
+            const originalCurrency = currentSaleForReturn.partialDetails.paymentCurrency;
+            const originalPaid = currentSaleForReturn.partialDetails.amountPaid;
+            
+            if (returnType === 'full') {
+                if (originalCurrency === 'USD') {
+                    cashDrawer.cashUSD -= originalPaid;
+                    refundDetails.push(`$${originalPaid.toFixed(2)}`);
+                } else {
+                    cashDrawer.cashLBP -= originalPaid;
+                    refundDetails.push(`${originalPaid.toLocaleString()} ل.ل`);
+                }
+            } else {
+                // استرجاع جزئي للمبيعة الجزئية
+                const refundRatio = partialAmount / currentSaleForReturn.amount;
+                const refundInOriginalCurrency = Math.min(originalPaid * refundRatio, originalPaid);
+                
+                if (originalCurrency === 'USD') {
+                    cashDrawer.cashUSD -= refundInOriginalCurrency;
+                    refundDetails.push(`$${refundInOriginalCurrency.toFixed(2)}`);
+                } else {
+                    cashDrawer.cashLBP -= refundInOriginalCurrency;
+                    refundDetails.push(`${refundInOriginalCurrency.toLocaleString()} ل.ل`);
+                }
+            }
         } else {
-            cashDrawer.cashLBP -= refundAmount;
+            // مبيعة قديمة بدون تفاصيل - افتراض بالدولار
+            if (currentSaleForReturn.amount < 50) { // افتراض مبالغ صغيرة بالدولار
+                cashDrawer.cashUSD -= refundAmount;
+                refundDetails.push(`$${refundAmount.toFixed(2)}`);
+            } else {
+                // تحويل للليرة
+                const refundLBP = refundAmount * settings.exchangeRate;
+                cashDrawer.cashLBP -= refundLBP;
+                refundDetails.push(`${refundLBP.toLocaleString()} ل.ل`);
+            }
         }
         
         // إضافة سجل معاملة
@@ -3316,7 +3456,7 @@ function processReturn() {
             timestamp: new Date().toISOString(),
             type: 'refund',
             amount: refundAmount,
-            description: `استرجاع ${returnType === 'full' ? 'كامل' : 'جزئي'} للفاتورة ${currentSaleForReturn.invoiceNumber}`,
+            description: `استرجاع ${returnType === 'full' ? 'كامل' : 'جزئي'} للفاتورة ${currentSaleForReturn.invoiceNumber} - المبلغ المرجع: ${refundDetails.join(' + ')}`,
             balanceAfter: {
                 USD: cashDrawer.cashUSD,
                 LBP: cashDrawer.cashLBP
@@ -3339,8 +3479,9 @@ function processReturn() {
     // إخفاء النافذة
     hideModal('returnSaleModal');
     
-    // إظهار رسالة نجاح
-    showMessage(`✅ تم استرجاع المبيعة بنجاح! تم رد ${formatCurrency(refundAmount)} للعميل`, 'success');
+    // إظهار رسالة نجاح مع تفاصيل المبلغ المرجع
+    const refundText = refundDetails.length > 0 ? refundDetails.join(' + ') : formatCurrency(refundAmount);
+    showMessage(`✅ تم استرجاع المبيعة بنجاح! تم رد ${refundText} للعميل`, 'success');
     
     currentSaleForReturn = null;
 }
