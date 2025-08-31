@@ -3347,10 +3347,25 @@ function processReturn() {
         return;
     }
     
-    const returnType = document.getElementById('returnType').value;
-    const partialAmount = parseFloat(document.getElementById('partialReturnAmount').value) || 0;
-    const returnReason = document.getElementById('returnReason').value;
-    const returnNotes = document.getElementById('returnNotes').value;
+    console.log('🔍 بدء عملية الاسترجاع للمبيعة:', currentSaleForReturn);
+    
+    const returnTypeEl = document.getElementById('returnType');
+    const partialAmountEl = document.getElementById('partialReturnAmount');
+    const returnReasonEl = document.getElementById('returnReason');
+    const returnNotesEl = document.getElementById('returnNotes');
+    
+    if (!returnTypeEl || !returnReasonEl || !returnNotesEl) {
+        console.error('❌ عناصر النموذج غير موجودة');
+        showMessage('خطأ في واجهة الاسترجاع', 'error');
+        return;
+    }
+    
+    const returnType = returnTypeEl.value;
+    const partialAmount = parseFloat(partialAmountEl ? partialAmountEl.value : '0') || 0;
+    const returnReason = returnReasonEl.value;
+    const returnNotes = returnNotesEl.value;
+    
+    console.log('📋 بيانات الاسترجاع:', { returnType, partialAmount, returnReason });
     
     // التحقق من صحة البيانات
     if (returnType === 'partial' && (partialAmount <= 0 || partialAmount > currentSaleForReturn.amount)) {
@@ -3382,7 +3397,18 @@ function processReturn() {
     }
     
     // تحديث الصندوق - إرجاع المال
-    if (currentSaleForReturn.paymentMethod === 'نقدي' || currentSaleForReturn.paymentMethod === 'جزئي') {
+    if (currentSaleForReturn.paymentMethod === 'نقدي' || currentSaleForReturn.paymentMethod === 'دفع جزئي (دين)') {
+        console.log('🔄 بدء تحديث الصندوق للاسترجاع - طريقة الدفع:', currentSaleForReturn.paymentMethod);
+        
+        // التأكد من تحميل الصندوق من التخزين
+        cashDrawer = loadFromStorage('cashDrawer', {
+            cashUSD: 100.00,
+            cashLBP: 500000,
+            lastUpdate: new Date().toISOString(),
+            transactions: []
+        });
+        
+        console.log('🏦 بيانات الصندوق المحملة:', cashDrawer);
         let refundDetails = [];
         
         if (currentSaleForReturn.cashDetails) {
@@ -3390,14 +3416,19 @@ function processReturn() {
             const originalCurrency = currentSaleForReturn.cashDetails.paymentCurrency;
             const originalPaid = currentSaleForReturn.cashDetails.amountPaid;
             
+            console.log('💰 تفاصيل المبيعة النقدية:', { originalCurrency, originalPaid, returnType });
+            console.log('💳 الصندوق قبل الاسترجاع:', { USD: cashDrawer.cashUSD, LBP: cashDrawer.cashLBP });
+            
             if (returnType === 'full') {
                 // استرجاع كامل - نرجع نفس المبلغ والعملة المدفوعة
                 if (originalCurrency === 'USD') {
                     cashDrawer.cashUSD -= originalPaid;
                     refundDetails.push(`$${originalPaid.toFixed(2)}`);
+                    console.log('💵 تم خصم من الدولار:', originalPaid);
                 } else {
                     cashDrawer.cashLBP -= originalPaid;
                     refundDetails.push(`${originalPaid.toLocaleString()} ل.ل`);
+                    console.log('💴 تم خصم من الليرة:', originalPaid);
                 }
             } else {
                 // استرجاع جزئي - نحسب النسبة
@@ -3464,8 +3495,12 @@ function processReturn() {
         });
         
         cashDrawer.lastUpdate = new Date().toISOString();
+        console.log('💳 الصندوق بعد الاسترجاع:', { USD: cashDrawer.cashUSD, LBP: cashDrawer.cashLBP });
         saveToStorage('cashDrawer', cashDrawer);
         updateCashDrawerDisplay();
+        console.log('✅ تم حفظ الصندوق وتحديث العرض');
+    } else {
+        console.log('❌ لم يتم تحديث الصندوق - طريقة الدفع:', currentSaleForReturn.paymentMethod);
     }
     
     // حفظ البيانات المحدثة
