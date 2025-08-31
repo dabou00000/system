@@ -2132,6 +2132,20 @@ function loadSales() {
     tbody.innerHTML = '';
     
     sales.forEach(sale => {
+        // تحديد حالة المبيعة
+        let statusClass = 'status-completed';
+        let statusText = 'مكتملة';
+        
+        if (sale.returned) {
+            if (sale.returnType === 'full') {
+                statusClass = 'status-returned';
+                statusText = 'مرجعة كاملة';
+            } else if (sale.returnType === 'partial') {
+                statusClass = 'status-partial-return';
+                statusText = 'مرجعة جزئياً';
+            }
+        }
+        
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${sale.invoiceNumber}</td>
@@ -2139,9 +2153,19 @@ function loadSales() {
             <td>${sale.customer}</td>
             <td>${formatCurrency(sale.amount)}</td>
             <td>${sale.paymentMethod}</td>
+            <td><span class="status-badge ${statusClass}">${statusText}</span></td>
             <td>
-                <button class="action-btn view-btn" onclick="viewSale(${sale.id})">عرض</button>
-                <button class="action-btn delete-btn" onclick="deleteSale(${sale.id})">حذف</button>
+                <button class="action-btn view-btn" onclick="viewSale(${sale.id})">
+                    <i class="fas fa-eye"></i> عرض
+                </button>
+                ${!sale.returned ? 
+                    `<button class="action-btn return-btn" onclick="initiateSaleReturn(${sale.id})">
+                        <i class="fas fa-undo"></i> استرجاع
+                    </button>` : 
+                    `<button class="action-btn" disabled>
+                        <i class="fas fa-check"></i> مرجعة
+                    </button>`
+                }
             </td>
         `;
         
@@ -2268,12 +2292,27 @@ document.getElementById('printInvoiceBtn').addEventListener('click', function() 
     printWindow.close();
 });
 
-function deleteSale(id) {
-    if (confirm('هل أنت متأكد من حذف هذه الفاتورة؟')) {
-        sales = sales.filter(s => s.id !== id);
-        loadSales();
-        showMessage('تم حذف الفاتورة');
-    }
+// تم استبدال دالة حذف المبيعات بنظام الاسترجاع الاحترافي
+
+// إحصائيات المرتجعات
+function getReturnStatistics() {
+    const totalSales = sales.length;
+    const returnedSales = sales.filter(s => s.returned).length;
+    const fullReturns = sales.filter(s => s.returned && s.returnType === 'full').length;
+    const partialReturns = sales.filter(s => s.returned && s.returnType === 'partial').length;
+    
+    const totalReturnAmount = sales
+        .filter(s => s.returned)
+        .reduce((sum, sale) => sum + (sale.returnAmount || 0), 0);
+    
+    return {
+        totalSales,
+        returnedSales,
+        fullReturns,
+        partialReturns,
+        totalReturnAmount,
+        returnRate: totalSales > 0 ? ((returnedSales / totalSales) * 100).toFixed(2) : 0
+    };
 }
 
 // تحميل العملاء
@@ -2871,13 +2910,62 @@ document.getElementById('autoBackupCheckbox').addEventListener('change', functio
 document.getElementById('filterSales').addEventListener('click', function() {
     const dateFrom = document.getElementById('dateFrom').value;
     const dateTo = document.getElementById('dateTo').value;
+    const statusFilter = document.getElementById('statusFilter').value;
     
-    if (!dateFrom || !dateTo) {
-        showMessage('يرجى تحديد تاريخ البداية والنهاية', 'error');
-        return;
+    let filteredSales = [...sales];
+    
+    // فلترة حسب التاريخ
+    if (dateFrom && dateTo) {
+        filteredSales = filteredSales.filter(sale => {
+            const saleDate = new Date(sale.date);
+            const fromDate = new Date(dateFrom);
+            const toDate = new Date(dateTo);
+            
+            return saleDate >= fromDate && saleDate <= toDate;
+        });
     }
     
-    filterSalesByDate(dateFrom, dateTo);
+    // فلترة حسب الحالة
+    if (statusFilter !== 'all') {
+        filteredSales = filteredSales.filter(sale => {
+            switch(statusFilter) {
+                case 'completed':
+                    return !sale.returned;
+                case 'returned':
+                    return sale.returned && sale.returnType === 'full';
+                case 'partial':
+                    return sale.returned && sale.returnType === 'partial';
+                default:
+                    return true;
+            }
+        });
+    }
+    
+    displayFilteredSales(filteredSales);
+    
+    // إظهار إحصائيات الفلترة
+    const statusText = {
+        'all': 'جميع المبيعات',
+        'completed': 'المبيعات المكتملة',
+        'returned': 'المبيعات المرجعة كاملة',
+        'partial': 'المبيعات المرجعة جزئياً'
+    };
+    
+    showMessage(`تم العثور على ${filteredSales.length} من ${statusText[statusFilter]} ${dateFrom && dateTo ? 'في الفترة المحددة' : ''}`);
+});
+
+// زر إعادة تعيين الفلترة
+document.addEventListener('DOMContentLoaded', function() {
+    const resetFilterBtn = document.getElementById('resetFilter');
+    if (resetFilterBtn) {
+        resetFilterBtn.addEventListener('click', function() {
+            document.getElementById('dateFrom').value = '';
+            document.getElementById('dateTo').value = '';
+            document.getElementById('statusFilter').value = 'all';
+            loadSales();
+            showMessage('تم إعادة تعيين الفلترة');
+        });
+    }
 });
 
 function filterSalesByDate(dateFrom, dateTo) {
@@ -2898,6 +2986,20 @@ function displayFilteredSales(filteredSales) {
     tbody.innerHTML = '';
     
     filteredSales.forEach(sale => {
+        // تحديد حالة المبيعة
+        let statusClass = 'status-completed';
+        let statusText = 'مكتملة';
+        
+        if (sale.returned) {
+            if (sale.returnType === 'full') {
+                statusClass = 'status-returned';
+                statusText = 'مرجعة كاملة';
+            } else if (sale.returnType === 'partial') {
+                statusClass = 'status-partial-return';
+                statusText = 'مرجعة جزئياً';
+            }
+        }
+        
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${sale.invoiceNumber}</td>
@@ -2905,9 +3007,19 @@ function displayFilteredSales(filteredSales) {
             <td>${sale.customer}</td>
             <td>${formatCurrency(sale.amount)}</td>
             <td>${sale.paymentMethod}</td>
+            <td><span class="status-badge ${statusClass}">${statusText}</span></td>
             <td>
-                <button class="action-btn view-btn" onclick="viewSale(${sale.id})">عرض</button>
-                <button class="action-btn delete-btn" onclick="deleteSale(${sale.id})">حذف</button>
+                <button class="action-btn view-btn" onclick="viewSale(${sale.id})">
+                    <i class="fas fa-eye"></i> عرض
+                </button>
+                ${!sale.returned ? 
+                    `<button class="action-btn return-btn" onclick="initiateSaleReturn(${sale.id})">
+                        <i class="fas fa-undo"></i> استرجاع
+                    </button>` : 
+                    `<button class="action-btn" disabled>
+                        <i class="fas fa-check"></i> مرجعة
+                    </button>`
+                }
             </td>
         `;
         
@@ -3095,6 +3207,164 @@ document.addEventListener('DOMContentLoaded', function() {
             showMessage('تم إضافة المنتج بنجاح! تم حساب الأسعار بالليرة تلقائياً 🎉');
             console.log('تم حفظ المنتج بنجاح');
         });
+    }
+});
+
+// نظام استرجاع المبيعات
+let currentSaleForReturn = null;
+
+function initiateSaleReturn(saleId) {
+    currentSaleForReturn = sales.find(s => s.id === saleId);
+    if (!currentSaleForReturn) {
+        showMessage('لم يتم العثور على المبيعة', 'error');
+        return;
+    }
+    
+    if (currentSaleForReturn.returned) {
+        showMessage('هذه المبيعة مرجعة مسبقاً', 'error');
+        return;
+    }
+    
+    // ملء بيانات المبيعة
+    document.getElementById('returnInvoiceNumber').textContent = currentSaleForReturn.invoiceNumber;
+    document.getElementById('returnCustomerName').textContent = currentSaleForReturn.customer;
+    document.getElementById('returnTotalAmount').textContent = formatCurrency(currentSaleForReturn.amount);
+    document.getElementById('returnPaymentMethod').textContent = currentSaleForReturn.paymentMethod;
+    
+    // إعادة تعيين النموذج
+    document.getElementById('returnType').value = 'full';
+    document.getElementById('partialReturnAmount').value = '';
+    document.getElementById('returnReason').value = 'defective';
+    document.getElementById('returnNotes').value = '';
+    document.getElementById('partialAmountGroup').style.display = 'none';
+    
+    // تحديث ملخص الاسترجاع
+    updateReturnSummary();
+    
+    // عرض النافذة
+    showModal('returnSaleModal');
+}
+
+function updateReturnSummary() {
+    if (!currentSaleForReturn) return;
+    
+    const returnType = document.getElementById('returnType').value;
+    const partialAmount = parseFloat(document.getElementById('partialReturnAmount').value) || 0;
+    
+    let refundAmount = 0;
+    if (returnType === 'full') {
+        refundAmount = currentSaleForReturn.amount;
+    } else if (returnType === 'partial') {
+        refundAmount = Math.min(partialAmount, currentSaleForReturn.amount);
+    }
+    
+    document.getElementById('refundAmount').textContent = formatCurrency(refundAmount);
+    document.getElementById('refundMethod').textContent = currentSaleForReturn.paymentMethod === 'نقدي' ? 'نقدي' : 'رد إلى البطاقة';
+}
+
+function processReturn() {
+    if (!currentSaleForReturn) {
+        showMessage('خطأ في البيانات', 'error');
+        return;
+    }
+    
+    const returnType = document.getElementById('returnType').value;
+    const partialAmount = parseFloat(document.getElementById('partialReturnAmount').value) || 0;
+    const returnReason = document.getElementById('returnReason').value;
+    const returnNotes = document.getElementById('returnNotes').value;
+    
+    // التحقق من صحة البيانات
+    if (returnType === 'partial' && (partialAmount <= 0 || partialAmount > currentSaleForReturn.amount)) {
+        showMessage('مبلغ الاسترجاع الجزئي غير صحيح', 'error');
+        return;
+    }
+    
+    // حساب مبلغ الاسترجاع
+    let refundAmount = returnType === 'full' ? currentSaleForReturn.amount : partialAmount;
+    
+    // تحديث بيانات المبيعة
+    currentSaleForReturn.returned = true;
+    currentSaleForReturn.returnType = returnType;
+    currentSaleForReturn.returnAmount = refundAmount;
+    currentSaleForReturn.returnDate = new Date().toISOString().split('T')[0];
+    currentSaleForReturn.returnReason = returnReason;
+    currentSaleForReturn.returnNotes = returnNotes;
+    
+    // إرجاع المنتجات للمخزون
+    if (currentSaleForReturn.items) {
+        currentSaleForReturn.items.forEach(item => {
+            const product = products.find(p => p.id === item.id);
+            if (product) {
+                const returnQuantity = returnType === 'full' ? item.quantity : 
+                    Math.floor((item.quantity * partialAmount) / currentSaleForReturn.amount);
+                product.stock += returnQuantity;
+            }
+        });
+    }
+    
+    // تحديث الصندوق - إرجاع المال
+    if (currentSaleForReturn.paymentMethod === 'نقدي') {
+        // تحديد العملة بناءً على المبلغ
+        if (refundAmount < 10) { // افتراض أن المبالغ الصغيرة بالدولار
+            cashDrawer.cashUSD -= refundAmount;
+        } else {
+            cashDrawer.cashLBP -= refundAmount;
+        }
+        
+        // إضافة سجل معاملة
+        cashDrawer.transactions.push({
+            timestamp: new Date().toISOString(),
+            type: 'refund',
+            amount: refundAmount,
+            description: `استرجاع ${returnType === 'full' ? 'كامل' : 'جزئي'} للفاتورة ${currentSaleForReturn.invoiceNumber}`,
+            balanceAfter: {
+                USD: cashDrawer.cashUSD,
+                LBP: cashDrawer.cashLBP
+            }
+        });
+        
+        cashDrawer.lastUpdate = new Date().toISOString();
+        saveToStorage('cashDrawer', cashDrawer);
+        updateCashDrawerDisplay();
+    }
+    
+    // حفظ البيانات المحدثة
+    saveToStorage('sales', sales);
+    saveToStorage('products', products);
+    
+    // تحديث الواجهات
+    loadSales();
+    displayProducts();
+    
+    // إخفاء النافذة
+    hideModal('returnSaleModal');
+    
+    // إظهار رسالة نجاح
+    showMessage(`✅ تم استرجاع المبيعة بنجاح! تم رد ${formatCurrency(refundAmount)} للعميل`, 'success');
+    
+    currentSaleForReturn = null;
+}
+
+// ربط الأحداث للنافذة
+document.addEventListener('DOMContentLoaded', function() {
+    // ربط تغيير نوع الاسترجاع
+    const returnTypeSelect = document.getElementById('returnType');
+    if (returnTypeSelect) {
+        returnTypeSelect.addEventListener('change', function() {
+            const partialGroup = document.getElementById('partialAmountGroup');
+            if (this.value === 'partial') {
+                partialGroup.style.display = 'block';
+            } else {
+                partialGroup.style.display = 'none';
+            }
+            updateReturnSummary();
+        });
+    }
+    
+    // ربط تحديث المبلغ الجزئي
+    const partialAmountInput = document.getElementById('partialReturnAmount');
+    if (partialAmountInput) {
+        partialAmountInput.addEventListener('input', updateReturnSummary);
     }
 });
 

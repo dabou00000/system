@@ -437,7 +437,14 @@
                     <div class="date-filter">
                         <input type="date" id="dateFrom">
                         <input type="date" id="dateTo">
+                        <select id="statusFilter">
+                            <option value="all">جميع المبيعات</option>
+                            <option value="completed">مكتملة فقط</option>
+                            <option value="returned">مرجعة فقط</option>
+                            <option value="partial">مرجعة جزئياً</option>
+                        </select>
                         <button id="filterSales">تصفية</button>
+                        <button id="resetFilter">إعادة تعيين</button>
                     </div>
                 </div>
                 
@@ -450,6 +457,7 @@
                                 <th>العميل</th>
                                 <th>المبلغ</th>
                                 <th>طريقة الدفع</th>
+                                <th>الحالة</th>
                                 <th>الإجراءات</th>
                             </tr>
                         </thead>
@@ -946,6 +954,94 @@
             </div>
             <div id="reportContent" class="report-body">
                 <!-- محتوى التقرير سيتم إنشاؤه ديناميكياً -->
+            </div>
+        </div>
+    </div>
+
+    <!-- نافذة استرجاع المبيعات -->
+    <div id="returnSaleModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-undo"></i> استرجاع المبيعة</h3>
+                <button class="close-btn" onclick="hideModal('returnSaleModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="return-info">
+                    <div class="sale-details">
+                        <h4>تفاصيل المبيعة</h4>
+                        <div class="detail-row">
+                            <span>رقم الفاتورة:</span>
+                            <span id="returnInvoiceNumber">--</span>
+                        </div>
+                        <div class="detail-row">
+                            <span>العميل:</span>
+                            <span id="returnCustomerName">--</span>
+                        </div>
+                        <div class="detail-row">
+                            <span>المبلغ الإجمالي:</span>
+                            <span id="returnTotalAmount">--</span>
+                        </div>
+                        <div class="detail-row">
+                            <span>طريقة الدفع:</span>
+                            <span id="returnPaymentMethod">--</span>
+                        </div>
+                    </div>
+                    
+                    <div class="return-options">
+                        <h4>خيارات الاسترجاع</h4>
+                        <div class="form-group">
+                            <label>نوع الاسترجاع:</label>
+                            <select id="returnType">
+                                <option value="full">استرجاع كامل</option>
+                                <option value="partial">استرجاع جزئي</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group" id="partialAmountGroup" style="display: none;">
+                            <label>المبلغ المراد استرجاعه:</label>
+                            <input type="number" id="partialReturnAmount" step="0.01" placeholder="أدخل المبلغ">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>سبب الاسترجاع:</label>
+                            <select id="returnReason">
+                                <option value="defective">منتج معيب</option>
+                                <option value="wrong_item">منتج خاطئ</option>
+                                <option value="customer_change">تغيير رأي العميل</option>
+                                <option value="size_issue">مشكلة في الحجم</option>
+                                <option value="other">أخرى</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>ملاحظات إضافية:</label>
+                            <textarea id="returnNotes" placeholder="أضف أي ملاحظات..."></textarea>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="return-summary">
+                    <h4>ملخص الاسترجاع</h4>
+                    <div class="summary-row">
+                        <span>المبلغ المسترجع:</span>
+                        <span id="refundAmount" class="amount-highlight">$0.00</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>طريقة الإرجاع:</span>
+                        <span id="refundMethod">نقدي</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-actions">
+                <button class="save-btn" onclick="processReturn()">
+                    <i class="fas fa-check"></i>
+                    تأكيد الاسترجاع
+                </button>
+                <button class="cancel-btn" onclick="hideModal('returnSaleModal')">
+                    <i class="fas fa-times"></i>
+                    إلغاء
+                </button>
             </div>
         </div>
     </div>
